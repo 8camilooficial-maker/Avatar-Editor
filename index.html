@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Avatar Editor</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
+  <style>
+    :root {
+      --bg-dark: #121212;
+      --accent: #ffffff;
+      --tool-bg: #1e1e1e;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    
+    body {
+      background-color: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Área de Visualização (expansível) */
+    .preview-area {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #1a1a1a;
+      position: relative;
+      touch-action: none;
+    }
+
+    canvas {
+      max-width: 100%;
+      max-height: 100%;
+      background: #000;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+      touch-action: none;
+      cursor: grab;
+    }
+    canvas:active { cursor: grabbing; }
+
+    .grid-overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      background-image: linear-gradient(to right, #888 1px, transparent 1px),
+                        linear-gradient(to bottom, #888 1px, transparent 1px);
+      background-size: 20% 20%;
+      opacity: 0.15;
+      display: none;
+    }
+    .grid-overlay.active { display: block; }
+
+    /* Painel de Ferramentas (abas) */
+    .tools-options {
+      background: var(--tool-bg);
+      padding: 15px;
+      display: none;
+      gap: 15px;
+      overflow-x: auto;
+      border-top: 1px solid #333;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .tools-options.active { display: flex; }
+
+    /* Estilo dos Ajustes - e + (stepper) */
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      min-width: 80px;
+    }
+    .control-group span { font-size: 10px; text-transform: uppercase; color: #888; }
+    .control-group .value {
+      font-size: 14px;
+      font-weight: bold;
+      color: #fff;
+    }
+    .stepper {
+      display: flex;
+      background: #333;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .stepper button {
+      background: none;
+      border: none;
+      color: #fff;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 16px;
+      min-width: 40px;
+    }
+    .stepper button:active { background: #444; }
+
+    /* Barra Inferior */
+    .bottom-bar {
+      background: #000;
+      height: 80px;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding-bottom: env(safe-area-inset-bottom);
+      flex-shrink: 0;
+      border-top: 1px solid #222;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      color: #888;
+      cursor: pointer;
+      font-size: 10px;
+      transition: 0.2s;
+    }
+
+    .nav-item i { font-size: 20px; }
+    .nav-item.active { color: #fff; }
+
+    /* Botão Gravar */
+    .record-btn {
+      width: 50px;
+      height: 50px;
+      background: #ff3b30;
+      border-radius: 50%;
+      border: 3px solid #fff;
+      margin-bottom: 10px;
+    }
+
+    .record-btn.recording {
+      border-radius: 8px;
+      transform: scale(0.8);
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+    }
+
+    /* Avatar scroll dentro do painel */
+    .avatar-scroll {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      padding: 5px 0;
+      width: 100%;
+    }
+    .avatar-btn {
+      background: #1F1F1F;
+      border: none;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      cursor: pointer;
+      border: 2px solid #3A3A3A;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+      transition: 0.15s;
+    }
+    .avatar-btn.ativo {
+      border-color: #FFD700;
+      transform: scale(1.05);
+      box-shadow: 0 0 12px rgba(255,215,0,0.3);
+    }
+
+    /* Fundos */
+    .bg-options {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .bg-btn {
+      background: #2A2A2A;
+      border: none;
+      border-radius: 30px;
+      padding: 8px 14px;
+      color: #fff;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .bg-btn.ativo { background: #3A6EA5; }
+
+    /* Uploads */
+    #audioFile, #customBgInput { display: none; }
+
+    .status-text {
+      font-size: 12px;
+      color: #aaa;
+      text-align: center;
+      padding: 4px;
+      background: #0a0a0a;
+      flex-shrink: 0;
+    }
+
+    /* Botão GIF */
+    .gif-btn {
+      background: #2A2A2A;
+      border: none;
+      border-radius: 30px;
+      padding: 8px 16px;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="preview-area">
+    <canvas id="editorCanvas" width="540" height="960"></canvas>
+    <div id="gridOverlay" class="grid-overlay"></div>
+  </div>
+
+  <!-- PAINÉIS (abas) -->
+  <div id="panel-canvas" class="tools-options">
+    <div class="nav-item" onclick="setRatio('1:1')"><i class="fa-regular fa-square"></i><span>1:1</span></div>
+    <div class="nav-item" onclick="setRatio('9:16')"><i class="fa-solid fa-mobile-screen"></i><span>9:16</span></div>
+    <div class="nav-item" onclick="setRatio('16:9')"><i class="fa-solid fa-tv"></i><span>16:9</span></div>
+    <div class="nav-item" onclick="toggleGrid()"><i class="fa-solid fa-border-all"></i><span>Grade</span></div>
+  </div>
+
+  <div id="panel-avatar" class="tools-options">
+    <div class="avatar-scroll" id="avatarContainer"></div>
+  </div>
+
+  <div id="panel-ajustes" class="tools-options">
+    <!-- Controles Stepper (-/+) -->
+    <div class="control-group">
+      <span>Olho Y</span>
+      <div class="value" id="eyeYValue">0</div>
+      <div class="stepper">
+        <button onclick="adjustValue('eyeY', -5)">-</button>
+        <button onclick="adjustValue('eyeY', 5)">+</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <span>Olho X</span>
+      <div class="value" id="eyeXValue">0</div>
+      <div class="stepper">
+        <button onclick="adjustValue('eyeX', -5)">-</button>
+        <button onclick="adjustValue('eyeX', 5)">+</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <span>Boca Y</span>
+      <div class="value" id="mouthYValue">0</div>
+      <div class="stepper">
+        <button onclick="adjustValue('mouthY', -5)">-</button>
+        <button onclick="adjustValue('mouthY', 5)">+</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <span>Escala</span>
+      <div class="value" id="scaleValue">1.00</div>
+      <div class="stepper">
+        <button onclick="adjustValue('scale', -0.05)">-</button>
+        <button onclick="adjustValue('scale', 0.05)">+</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-audio" class="tools-options">
+    <label for="audioFile" class="nav-item">
+      <i class="fa-solid fa-cloud-arrow-up"></i>
+      <span>Upload MP3</span>
+    </label>
+    <div class="nav-item" onclick="togglePlay()"><i class="fa-solid fa-play"></i><span>Testar</span></div>
+    <button class="gif-btn" onclick="exportGIF()"><i class="fas fa-film"></i> GIF</button>
+  </div>
+
+  <div id="panel-fundo" class="tools-options">
+    <div class="bg-options">
+      <button class="bg-btn ativo" data-bg="transp"><i class="fas fa-transparent"></i> Transp</button>
+      <button class="bg-btn" data-bg="croma"><i class="fas fa-fill-drip"></i> Croma</button>
+      <button class="bg-btn" data-bg="azul"><i class="fas fa-palette"></i> Azul</button>
+      <label class="bg-btn" for="customBgInput"><i class="fas fa-image"></i> Imagem</label>
+      <input type="file" id="customBgInput" accept="image/*">
+    </div>
+  </div>
+
+  <!-- BARRA INFERIOR -->
+  <div class="bottom-bar">
+    <div class="nav-item" onclick="openPanel('canvas')"><i class="fa-solid fa-expand"></i><span>Canvas</span></div>
+    <div class="nav-item" onclick="openPanel('audio')"><i class="fa-solid fa-music"></i><span>Áudio</span></div>
+    <div class="nav-item" onclick="startRecording()"><div class="record-btn" id="recBtn"></div><span>Gravar</span></div>
+    <div class="nav-item" onclick="openPanel('avatar')"><i class="fa-solid fa-user-astronaut"></i><span>Avatar</span></div>
+    <div class="nav-item" onclick="openPanel('ajustes')"><i class="fa-solid fa-sliders"></i><span>Ajustes</span></div>
+    <div class="nav-item" onclick="openPanel('fundo')"><i class="fa-solid fa-fill-drip"></i><span>Fundo</span></div>
+  </div>
+
+  <input type="file" id="audioFile" accept="audio/*">
+  <div class="status-text" id="statusMsg">Pronto para começar</div>
+
+  <script>
+    (function(){
+      "use strict";
+
+      // ---------- ELEMENTOS ----------
+      const canvas = document.getElementById('editorCanvas');
+      const ctx = canvas.getContext('2d');
+      const gridOverlay = document.getElementById('gridOverlay');
+      const statusDiv = document.getElementById('statusMsg');
+      const avatarContainer = document.getElementById('avatarContainer');
+      const audioFileInput = document.getElementById('audioFile');
+      const customBgInput = document.getElementById('customBgInput');
+      const bgBtns = document.querySelectorAll('[data-bg]');
+      const recBtn = document.getElementById('recBtn');
+
+      // Valores exibidos nos steppers
+      const eyeYValSpan = document.getElementById('eyeYValue');
+      const eyeXValSpan = document.getElementById('eyeXValue');
+      const mouthYValSpan = document.getElementById('mouthYValue');
+      const scaleValSpan = document.getElementById('scaleValue');
+
+      // Estado
+      let fundoAtivo = 'transp';
+      let fundoCustomImg = null;
+      let avatarPos = { x: 270, y: 480 };
+      let isDragging = false, dragStart = { x:0, y:0 }, avatarStartPos = { x:0, y:0 };
+      let manualEyeOffsetY = 0, manualEyeOffsetX = 0, manualMouthOffsetY = 0, manualScale = 1.0;
+      let currentRatio = '9:16';
+      let canvasW = 540, canvasH = 960;
+
+      // Avatares (18)
+      const avatarList = [
+        { id: 'hm1', skin: '#FDDBB4', hair: '#F5C542', gender: 'M', hairStyle: 'short' },
+        { id: 'hm2', skin: '#F5C5A3', hair: '#8B4513', gender: 'M', hairStyle: 'short' },
+        { id: 'hm3', skin: '#FDDBB4', hair: '#1C1C1C', gender: 'M', hairStyle: 'short' },
+        { id: 'hm4', skin: '#FDDBB4', hair: '#C0392B', gender: 'M', hairStyle: 'short' },
+        { id: 'hm5', skin: '#C68642', hair: '#1C1C1C', gender: 'M', hairStyle: 'short' },
+        { id: 'hm6', skin: '#A0522D', hair: '#1C1C1C', gender: 'M', hairStyle: 'short' },
+        { id: 'hm7', skin: '#6B3A2A', hair: '#1C1C1C', gender: 'M', hairStyle: 'curly' },
+        { id: 'hm8', skin: '#4A2010', hair: '#1C1C1C', gender: 'M', hairStyle: 'curly' },
+        { id: 'hm9', skin: '#F0D5B0', hair: '#1C1C1C', gender: 'M', hairStyle: 'short' },
+        { id: 'hf1', skin: '#FDDBB4', hair: '#F5C542', gender: 'F', hairStyle: 'long' },
+        { id: 'hf2', skin: '#F5C5A3', hair: '#8B4513', gender: 'F', hairStyle: 'long' },
+        { id: 'hf3', skin: '#FDDBB4', hair: '#1C1C1C', gender: 'F', hairStyle: 'long' },
+        { id: 'hf4', skin: '#FDDBB4', hair: '#C0392B', gender: 'F', hairStyle: 'long' },
+        { id: 'hf5', skin: '#C68642', hair: '#1C1C1C', gender: 'F', hairStyle: 'long' },
+        { id: 'hf6', skin: '#A0522D', hair: '#3B1A08', gender: 'F', hairStyle: 'long' },
+        { id: 'hf7', skin: '#6B3A2A', hair: '#1C1C1C', gender: 'F', hairStyle: 'curly' },
+        { id: 'hf8', skin: '#4A2010', hair: '#1C1C1C', gender: 'F', hairStyle: 'curly' },
+        { id: 'hf9', skin: '#F0D5B0', hair: '#1C1C1C', gender: 'F', hairStyle: 'long' }
+      ];
+      let avatarSkin = avatarList[0].skin;
+      let avatarHair = avatarList[0].hair;
+      let avatarGender = avatarList[0].gender;
+      let avatarHairStyle = avatarList[0].hairStyle;
+
+      // Áudio e animação
+      let audioCtx, analyser, dataArray, source, audioBuffer, isPlaying = false, isRecording = false;
+      let mediaRecorder, recordedChunks = [];
+      let mouthLevel = 0;
+      let animationFrame = null;
+      let blinkState = 0, blinkCounter = 0, timeAcc = 0, eyeOffsetAnimX = 0, eyeOffsetAnimY = 0;
+
+      // ---------- UI ----------
+      function setStatus(msg){ statusDiv.textContent = msg; }
+
+      function openPanel(id) {
+        document.querySelectorAll('.tools-options').forEach(p => p.classList.remove('active'));
+        document.getElementById('panel-' + id).classList.add('active');
+      }
+      window.openPanel = openPanel;
+
+      function toggleGrid() {
+        gridOverlay.classList.toggle('active');
+      }
+      window.toggleGrid = toggleGrid;
+
+      function setRatio(r) {
+        currentRatio = r;
+        if (r === '1:1') { canvasW = 600; canvasH = 600; }
+        else if (r === '9:16') { canvasW = 540; canvasH = 960; }
+        else if (r === '16:9') { canvasW = 800; canvasH = 450; }
+        canvas.width = canvasW;
+        canvas.height = canvasH;
+        avatarPos.x = Math.min(Math.max(avatarPos.x, 50), canvasW - 50);
+        avatarPos.y = Math.min(Math.max(avatarPos.y, 50), canvasH - 50);
+        drawCharacter(mouthLevel);
+      }
+      window.setRatio = setRatio;
+
+      // Ajustes via stepper
+      function adjustValue(prop, delta) {
+        if (prop === 'eyeY') {
+          manualEyeOffsetY = Math.min(80, Math.max(-80, manualEyeOffsetY + delta));
+          eyeYValSpan.textContent = manualEyeOffsetY;
+        } else if (prop === 'eyeX') {
+          manualEyeOffsetX = Math.min(80, Math.max(-80, manualEyeOffsetX + delta));
+          eyeXValSpan.textContent = manualEyeOffsetX;
+        } else if (prop === 'mouthY') {
+          manualMouthOffsetY = Math.min(80, Math.max(-80, manualMouthOffsetY + delta));
+          mouthYValSpan.textContent = manualMouthOffsetY;
+        } else if (prop === 'scale') {
+          manualScale = Math.min(2.0, Math.max(0.5, manualScale + delta));
+          scaleValSpan.textContent = manualScale.toFixed(2);
+        }
+        drawCharacter(mouthLevel);
+      }
+      window.adjustValue = adjustValue;
+
+      // Fundos
+      bgBtns.forEach(btn => btn.addEventListener('click', ()=>{
+        fundoAtivo = btn.dataset.bg;
+        bgBtns.forEach(b => b.classList.remove('ativo'));
+        btn.classList.add('ativo');
+        fundoCustomImg = null;
+        drawCharacter(mouthLevel);
+      }));
+      customBgInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = ev => {
+            fundoCustomImg = new Image();
+            fundoCustomImg.src = ev.target.result;
+            fundoAtivo = 'custom';
+            bgBtns.forEach(b => b.classList.remove('ativo'));
+            drawCharacter(mouthLevel);
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      // Construir avatares
+      function buildAvatarList() {
+        avatarContainer.innerHTML = '';
+        avatarList.forEach((av, idx) => {
+          const btn = document.createElement('div');
+          btn.className = `avatar-btn ${idx === 0 ? 'ativo' : ''}`;
+          btn.style.background = av.skin;
+          btn.innerHTML = `
+            <div style="position:absolute;top:0;left:0;right:0;height:${av.hairStyle==='long'?'45%':'35%'};background:${av.hair};border-radius:${av.hairStyle==='curly'?'40% 40% 0 0':'50% 50% 0 0'};"></div>
+            <div style="position:absolute;bottom:2px;font-size:10px;color:white;font-weight:bold;">${av.gender}</div>
+          `;
+          btn.addEventListener('click', () => {
+            document.querySelectorAll('.avatar-btn').forEach(b => b.classList.remove('ativo'));
+            btn.classList.add('ativo');
+            avatarSkin = av.skin;
+            avatarHair = av.hair;
+            avatarGender = av.gender;
+            avatarHairStyle = av.hairStyle;
+            drawCharacter(mouthLevel);
+          });
+          avatarContainer.appendChild(btn);
+        });
+      }
+
+      // ---------- DESENHO ----------
+      function drawEye(x, y, size) {
+        ctx.save();
+        ctx.shadowColor = '#00000060'; ctx.shadowBlur = 8;
+        ctx.fillStyle = '#F8F9FA';
+        ctx.beginPath();
+        ctx.ellipse(x, y, size*1.3, size*0.9, 0, 0, Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle = '#A1887F'; ctx.lineWidth = 1.5; ctx.stroke();
+        if (blinkState === 0) {
+          ctx.fillStyle = '#6D4C41';
+          ctx.beginPath();
+          ctx.arc(x + eyeOffsetAnimX*0.6, y + eyeOffsetAnimY*0.6, size*0.55, 0, Math.PI*2);
+          ctx.fill();
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          ctx.arc(x + eyeOffsetAnimX*0.9, y + eyeOffsetAnimY*0.9, size*0.3, 0, Math.PI*2);
+          ctx.fill();
+          ctx.fillStyle = '#FFF';
+          ctx.beginPath();
+          ctx.arc(x + eyeOffsetAnimX*0.4 - 3, y + eyeOffsetAnimY*0.4 - 3, size*0.15, 0, Math.PI*2);
+          ctx.fill();
+        } else {
+          ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(x - size*1.3, y); ctx.lineTo(x + size*1.3, y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawMouth(x, y, openAmount, scale) {
+        const mouthWidth = 42 * scale;
+        const mouthHeight = 8 + openAmount * 32 * scale;
+        ctx.save();
+        ctx.shadowBlur = 6;
+        ctx.fillStyle = '#B91C1C';
+        ctx.beginPath();
+        ctx.ellipse(x, y, mouthWidth, mouthHeight/2, 0, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = '#450A0A';
+        ctx.beginPath();
+        ctx.ellipse(x, y - 2, mouthWidth-6, mouthHeight/2.5, 0, 0, Math.PI*2);
+        ctx.fill();
+        if (openAmount > 0.2) {
+          const teethY = y - 4 - (openAmount * 3);
+          const teethW = mouthWidth * 0.7;
+          ctx.fillStyle = '#FEF9C3';
+          ctx.beginPath();
+          ctx.rect(x - teethW/2, teethY, teethW, 6 * scale);
+          ctx.fill();
+          ctx.fillStyle = '#D97706';
+          for (let i = -2; i <= 2; i++) {
+            ctx.fillRect(x - teethW/2 + (teethW/4)*i, teethY, 2, 6*scale);
+          }
+          ctx.fillStyle = '#FCA5A5';
+          ctx.beginPath();
+          ctx.ellipse(x, y + 2, mouthWidth*0.4, 6*scale, 0, 0, Math.PI*2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawFace(cx, cy, s) {
+        ctx.fillStyle = avatarHair;
+        if (avatarHairStyle === 'long') {
+          ctx.beginPath();
+          ctx.ellipse(cx, cy - 50*s, 78*s, 65*s, 0, Math.PI, 0);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.ellipse(cx - 72*s, cy + 40*s, 20*s, 80*s, -0.15, 0, Math.PI*2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.ellipse(cx + 72*s, cy + 40*s, 20*s, 80*s, 0.15, 0, Math.PI*2);
+          ctx.fill();
+        } else if (avatarHairStyle === 'curly') {
+          for (let i=0; i<8; i++) {
+            const ang = Math.PI + (i/7)*Math.PI;
+            const rx = cx + Math.cos(ang)*62*s;
+            const ry = cy - 20*s + Math.sin(ang)*55*s;
+            ctx.beginPath();
+            ctx.arc(rx, ry, 22*s, 0, Math.PI*2);
+            ctx.fill();
+          }
+          ctx.beginPath();
+          ctx.ellipse(cx, cy - 68*s, 50*s, 30*s, 0, 0, Math.PI*2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.ellipse(cx, cy - 55*s, 72*s, 58*s, 0, Math.PI, 0);
+          ctx.fill();
+        }
+
+        ctx.fillStyle = avatarSkin;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 68*s, 80*s, 0, 0, Math.PI*2);
+        ctx.fill();
+        const grad = ctx.createRadialGradient(cx+20*s, cy, 10*s, cx, cy, 80*s);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, 'rgba(0,0,0,0.12)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 68*s, 80*s, 0, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.fillStyle = avatarSkin;
+        ctx.beginPath(); ctx.ellipse(cx - 68*s, cy + 5*s, 10*s, 15*s, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx + 68*s, cy + 5*s, 10*s, 15*s, 0, 0, Math.PI*2); ctx.fill();
+
+        ctx.fillStyle = avatarHair;
+        if (avatarHairStyle === 'long') {
+          ctx.beginPath();
+          ctx.ellipse(cx, cy - 68*s, 68*s, 28*s, 0, Math.PI, 0);
+          ctx.fill();
+        } else if (avatarHairStyle === 'curly') {
+          for (let i=0; i<5; i++) {
+            const ang = Math.PI + (i/4)*Math.PI;
+            const rx = cx + Math.cos(ang)*52*s;
+            const ry = cy - 58*s + Math.sin(ang)*18*s;
+            ctx.beginPath();
+            ctx.arc(rx, ry, 18*s, 0, Math.PI*2);
+            ctx.fill();
+          }
+        } else {
+          ctx.beginPath();
+          ctx.ellipse(cx, cy - 68*s, 64*s, 22*s, 0, Math.PI, 0);
+          ctx.fill();
+        }
+      }
+
+      function drawCharacter(mOpen) {
+        ctx.clearRect(0, 0, canvasW, canvasH);
+        if (fundoAtivo === 'croma') { ctx.fillStyle = '#0B5E0B'; ctx.fillRect(0,0,canvasW,canvasH); }
+        else if (fundoAtivo === 'azul') { ctx.fillStyle = '#2563EB'; ctx.fillRect(0,0,canvasW,canvasH); }
+        else if (fundoAtivo === 'custom' && fundoCustomImg) { ctx.drawImage(fundoCustomImg, 0,0,canvasW,canvasH); }
+
+        const cx = avatarPos.x, cy = avatarPos.y;
+        const s = manualScale;
+        drawFace(cx, cy, s);
+        const eyeY = cy - 40 + manualEyeOffsetY;
+        const eyeXOff = 45 + manualEyeOffsetX;
+        drawEye(cx - eyeXOff * s, eyeY, 20 * s);
+        drawEye(cx + eyeXOff * s, eyeY, 20 * s);
+        drawMouth(cx, cy + 35 + manualMouthOffsetY, mOpen, s);
+      }
+
+      function updateEyes(level) {
+        if (blinkState === 0) {
+          if (blinkCounter <= 0) { blinkState = 1; blinkCounter = 3; }
+          else blinkCounter--;
+        } else {
+          if (blinkCounter <= 0) { blinkState = 0; blinkCounter = 30 + Math.floor(Math.random() * 90); }
+          else blinkCounter--;
+        }
+        timeAcc += 0.02;
+        eyeOffsetAnimX = Math.sin(timeAcc * 1.3) * 6 + level * 5;
+        eyeOffsetAnimY = Math.cos(timeAcc * 1.7) * 4 - level * 3;
+      }
+
+      // Arrastar
+      function getCanvasCoords(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        let cx, cy;
+        if (e.touches) { cx = e.touches[0].clientX; cy = e.touches[0].clientY; }
+        else { cx = e.clientX; cy = e.clientY; }
+        return { x: (cx - rect.left) * scaleX, y: (cy - rect.top) * scaleY };
+      }
+      function onDragStart(e) {
+        isDragging = true;
+        const p = getCanvasCoords(e);
+        dragStart = p;
+        avatarStartPos = { ...avatarPos };
+        canvas.style.cursor = 'grabbing';
+        e.preventDefault();
+      }
+      function onDragMove(e) {
+        if (!isDragging) return;
+        const p = getCanvasCoords(e);
+        let dx = p.x - dragStart.x, dy = p.y - dragStart.y;
+        avatarPos.x = Math.min(Math.max(avatarStartPos.x + dx, 50), canvasW - 50);
+        avatarPos.y = Math.min(Math.max(avatarStartPos.y + dy, 50), canvasH - 50);
+        drawCharacter(mouthLevel);
+        e.preventDefault();
+      }
+      function onDragEnd() { isDragging = false; canvas.style.cursor = 'grab'; }
+      canvas.addEventListener('mousedown', onDragStart);
+      window.addEventListener('mousemove', onDragMove);
+      window.addEventListener('mouseup', onDragEnd);
+      canvas.addEventListener('touchstart', onDragStart, { passive: false });
+      window.addEventListener('touchmove', onDragMove, { passive: false });
+      window.addEventListener('touchend', onDragEnd);
+
+      // Áudio
+      async function initAudio() {
+        if (audioCtx) return audioCtx;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.7;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        return audioCtx;
+      }
+      async function loadAudio(file) {
+        const ctx = await initAudio();
+        const buf = await file.arrayBuffer();
+        audioBuffer = await ctx.decodeAudioData(buf);
+      }
+      function updateMouthFromAudio() {
+        if (!analyser) return 0;
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let v of dataArray) sum += v;
+        return Math.min(1.0, (sum / dataArray.length) / 255 * 1.9);
+      }
+      function animationLoop(startTime) {
+        if (!isPlaying) return;
+        if (audioCtx.currentTime - startTime >= audioBuffer.duration) { stopPlayback(); return; }
+        mouthLevel = updateMouthFromAudio();
+        updateEyes(mouthLevel);
+        drawCharacter(mouthLevel);
+        animationFrame = requestAnimationFrame(() => animationLoop(startTime));
+      }
+      function stopPlayback() {
+        isPlaying = false;
+        if (source) { try { source.stop(); } catch(e){} source.disconnect(); source = null; }
+        if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = null; }
+        recBtn.classList.remove('recording');
+        isRecording = false;
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+        setStatus('Pronto');
+        drawCharacter(0);
+      }
+      async function togglePlay() {
+        const file = audioFileInput.files[0];
+        if (!file) { setStatus('Selecione um áudio'); return; }
+        if (!audioBuffer) { setStatus('Carregando áudio...'); await loadAudio(file); }
+        if (isPlaying) { stopPlayback(); return; }
+        const ctx = await initAudio();
+        if (ctx.state === 'suspended') await ctx.resume();
+        source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        source.start(0);
+        isPlaying = true;
+        const startTime = ctx.currentTime;
+        animationLoop(startTime);
+        source.onended = stopPlayback;
+        setStatus('Tocando...');
+      }
+      window.togglePlay = togglePlay;
+
+      async function startRecording() {
+        const file = audioFileInput.files[0];
+        if (!file) { setStatus('Selecione um áudio'); return; }
+        if (!audioBuffer) { setStatus('Carregando áudio...'); await loadAudio(file); }
+        if (isRecording) {
+          mediaRecorder.stop();
+          return;
+        }
+        const ctx = await initAudio();
+        if (ctx.state === 'suspended') await ctx.resume();
+        const canvasStream = canvas.captureStream(30);
+        const dest = ctx.createMediaStreamDestination();
+        const combined = new MediaStream([...canvasStream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm' });
+        mediaRecorder.ondataavailable = e => { if (e.data.size) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'avatar_animado.webm';
+          a.click();
+          setStatus('Vídeo salvo!');
+          stopPlayback();
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        recBtn.classList.add('recording');
+        source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        analyser.connect(dest);
+        source.start(0);
+        isPlaying = true;
+        const startTime = ctx.currentTime;
+        animationLoop(startTime);
+        source.onended = () => { if (mediaRecorder.state !== 'inactive') mediaRecorder.stop(); else stopPlayback(); };
+        setStatus('Gravando...');
+      }
+      window.startRecording = startRecording;
+
+      async function exportGIF() {
+        const file = audioFileInput.files[0];
+        if (!file) { setStatus('Selecione um áudio'); return; }
+        if (!audioBuffer) { await loadAudio(file); }
+        setStatus('Renderizando GIF...');
+        const gif = new GIF({ workers: 2, quality: 10, width: Math.min(canvas.width, 480), height: Math.min(canvas.height, 480) });
+        const duration = Math.min(5, audioBuffer.duration);
+        const fps = 12;
+        const frames = Math.floor(duration * fps);
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = gif.width; offCanvas.height = gif.height;
+        const offCtx = offCanvas.getContext('2d');
+        for (let i = 0; i < frames; i++) {
+          const progress = (i / fps) / audioBuffer.duration;
+          const fakeMouth = 0.4 + 0.5 * Math.sin(progress * Math.PI * 8);
+          mouthLevel = fakeMouth;
+          updateEyes(fakeMouth);
+          drawCharacter(fakeMouth);
+          offCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, offCanvas.width, offCanvas.height);
+          gif.addFrame(offCanvas, { delay: 1000 / fps, copy: true });
+        }
+        gif.on('finished', blob => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'avatar.gif';
+          a.click();
+          setStatus('GIF exportado!');
+          mouthLevel = 0;
+          drawCharacter(0);
+        });
+        gif.render();
+      }
+      window.exportGIF = exportGIF;
+
+      // Inicialização
+      buildAvatarList();
+      setRatio('9:16');
+      drawCharacter(0);
+      setStatus('Pronto! Escolha áudio e avatar.');
+      openPanel('avatar');
+    })();
+  </script>
+</body>
+</html>
