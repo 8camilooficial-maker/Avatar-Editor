@@ -20,4 +20,4 @@ Use, modifique e compartilhe à vontade – um crédito é sempre bem-vindo 💛
 
 ---
 
-**Feito com 💎 por [Seu Nome / Apelido] – porque todo avatar merece brilhar!**
+**Feito com 💎 por [Camilo] – porque todo avatar merece brilhar!**
