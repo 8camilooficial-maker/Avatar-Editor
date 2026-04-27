@@ -926,87 +926,116 @@
 
 <!-- NENHUM MODAL DE DOWNLOAD – COMPARTILHAMENTO DIRETO NATIVO -->
 
-<script>
-(function(){
+<script>(function(){
 "use strict";
 
 // ═══════════════════════════════════════════════════════
-// ★ NOVO SISTEMA DE COMPARTILHAMENTO NATIVO (SEM MODAL) ★
+// ★ SISTEMA DE COMPARTILHAR NATIVO — ANDROID v4 ★
+// Usa o painel nativo do Android para salvar em qualquer app
 // ═══════════════════════════════════════════════════════
 
-/**
- * Compartilha ou baixa um blob usando a Web Share API nativa do Android.
- * Se não for suportado, faz fallback para download direto.
- */
-async function triggerShare(blob, filename) {
-  try {
-    // Tenta bridge nativa do Android primeiro (se existir)
-    if (window.Android && typeof window.Android.saveFile === 'function') {
-      const url = URL.createObjectURL(blob);
-      try {
-        window.Android.saveFile(url, filename);
-        showSnack('✅ Salvo na galeria!');
-        return;
-      } catch(e) {
-        // Continua para próximos métodos
-      } finally {
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
+let _dlBlob = null;
+let _dlFilename = null;
+let _dlBlobURL = null;
+
+function closeDlModal() {
+  document.getElementById('dlModal').classList.remove('show');
+}
+function openDlModal() {
+  document.getElementById('dlModal').classList.add('show');
+}
+
+document.getElementById('dlModal').addEventListener('click', function(e) {
+  if (e.target === this) closeDlModal();
+});
+
+// ★ Compartilha via painel nativo Android (WhatsApp, Galeria, Drive, etc.)
+async function shareNative(blob, filename) {
+  const file = new File([blob], filename, { type: blob.type });
+  // Tenta Web Share API com arquivo (abre painel nativo)
+  if (navigator.share) {
+    try {
+      const shareData = { files: [file], title: 'Avatar Editor' };
+      // canShare pode não existir em alguns WebViews, tenta direto
+      const canShare = navigator.canShare ? navigator.canShare(shareData) : true;
+      if (canShare) {
+        await navigator.share(shareData);
+        showSnack('✅ Compartilhado!');
+        return true;
       }
+    } catch(e) {
+      if (e.name === 'AbortError') return true; // usuário cancelou — ok
+      // outros erros: tenta sem arquivo
+      try {
+        await navigator.share({ title: 'Avatar Editor', text: 'Salve seu avatar!' });
+        return true;
+      } catch(e2) {}
     }
+  }
+  return false;
+}
 
-    // Cria um arquivo a partir do blob
-    const file = new File([blob], filename, { type: blob.type });
+async function triggerDownloadOrShare(blob, filename) {
+  _dlBlob = blob;
+  _dlFilename = filename;
+  if (_dlBlobURL) { try { URL.revokeObjectURL(_dlBlobURL); } catch(e) {} }
+  _dlBlobURL = URL.createObjectURL(blob);
 
-    // Verifica se a Web Share API com arquivos é suportada
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title: 'Avatar Editor',
-        text: 'Compartilhar avatar animado!'
-      });
-      showSnack('✅ Compartilhado com sucesso!');
-      return;
-    }
+  // CAMADA 1: Bridge nativa Android (APK com JavascriptInterface)
+  if (window.Android && typeof window.Android.saveFile === 'function') {
+    try { window.Android.saveFile(_dlBlobURL, filename); showSnack('✅ Salvo!'); return; } catch(e) {}
+  }
 
-    // Se não suporta compartilhamento de arquivos, tenta fallback
-    throw new Error('Web Share API não suporta arquivos');
-  } catch (error) {
-    // Se o usuário cancelou o compartilhamento, não faz nada
-    if (error.name === 'AbortError') return;
+  // CAMADA 2: Web Share API — painel nativo do Android
+  const shared = await shareNative(blob, filename);
+  if (shared) return;
 
-    console.warn('Compartilhamento nativo falhou, usando fallback:', error);
-    
-    // Fallback: criar link de download e acionar
-    const url = URL.createObjectURL(blob);
+  // CAMADA 3: Download via <a> (pode funcionar em alguns WebViews)
+  try {
     const a = document.createElement('a');
-    a.href = url;
+    a.href = _dlBlobURL;
     a.download = filename;
-    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    
-    // Limpa o objeto URL após um tempo
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    showSnack('💾 Download iniciado...');
-  }
+  } catch(e) {}
+
+  // CAMADA 4: Mostra modal com opções
+  setTimeout(openDlModal, 400);
 }
 
-// Função auxiliar para snackbar (já existente, mas sem modal)
-function showSnack(msg, retryFn) {
-  const sb = document.getElementById('snackbar');
-  sb.innerHTML = msg;
-  if (retryFn) {
-    sb.innerHTML += ' <button style="background:var(--gold);color:#000;border:none;border-radius:10px;padding:2px 8px;margin-left:8px;cursor:pointer;" onclick="this.parentNode._retry&&this.parentNode._retry()">Tentar novamente</button>';
-    sb._retry = retryFn;
+// Botão COMPARTILHAR — abre painel nativo direto
+document.getElementById('dlBtnShare').addEventListener('click', async function() {
+  closeDlModal();
+  if (!_dlBlob) return;
+  const shared = await shareNative(_dlBlob, _dlFilename);
+  if (!shared && _dlBlobURL) {
+    // último recurso: abre blob em nova aba
+    try { window.open(_dlBlobURL, '_blank'); } catch(e) {}
+    showSnack('💾 Segure a mídia > Salvar imagem/vídeo');
   }
-  sb.classList.add('show');
-  clearTimeout(sb._t);
-  sb._t = setTimeout(() => sb.classList.remove('show'), 5000);
-}
+});
 
-// Substitui a antiga triggerDownloadOrShare pela nova triggerShare em todas as chamadas
-// (as funções takeSnapshot, startRecording, exportGIF já usavam triggerDownloadOrShare; vamos renomear/adaptar)
+// Botão ABRIR — força nova aba com blob URL
+document.getElementById('dlBtnOpen').addEventListener('click', function() {
+  closeDlModal();
+  if (!_dlBlobURL) return;
+  try {
+    const a = document.createElement('a');
+    a.href = _dlBlobURL;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch(e) {
+    window.open(_dlBlobURL, '_blank');
+  }
+  showSnack('🌐 Segure a mídia > Salvar imagem/vídeo');
+});
+
+// Botão CANCELAR
+document.getElementById('dlBtnClose').addEventListener('click', closeDlModal);
 
 // ═══════════════════════════════════════════════════════
 // Adiciona botões de scroll lateral nos painéis
