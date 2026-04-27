@@ -61,8 +61,8 @@
     .ctrl-grp { display:flex; flex-direction:column; align-items:center; gap:5px; min-width:70px; }
     .ctrl-grp .lbl { font-size:9px; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); }
     .ctrl-grp .val { font-size:13px; font-weight:700; color:var(--gold); }
-    .stepper { display:flex; background:var(--surface2); border:1px solid var(--border); border-radius:9px; overflow:hidden; }
-    .stepper button { background:none; border:none; color:var(--text); padding:7px 13px; cursor:pointer; font-size:15px; min-width:38px; }
+    .stepper { display:flex; background:var(--surface2); border:1px solid var(--border); border-radius:12px; overflow:hidden; gap:2px; }
+    .stepper button { background:none; border:none; color:#fff; padding:10px 16px; cursor:pointer; font-size:22px; min-width:52px; line-height:1; display:flex; align-items:center; justify-content:center; }
     .stepper button:active { background:var(--border); }
     .avatar-scroll { display:flex; gap:9px; overflow-x:auto; padding:3px 0; width:100%; scrollbar-width:none; }
     .avatar-scroll::-webkit-scrollbar { display:none; }
@@ -160,10 +160,10 @@
 </div>
 
 <div id="panel-ajustes" class="tools-options">
-  <div class="ctrl-grp"><div class="lbl">Escala</div><div class="val" id="scaleValue">1.00</div><div class="stepper"><button onclick="adjustValue('scale',-0.05)">−</button><button onclick="adjustValue('scale',0.05)">+</button></div></div>
-  <div class="ctrl-grp"><div class="lbl">Olho Y</div><div class="val" id="eyeYValue">0</div><div class="stepper"><button onclick="adjustValue('eyeY',-5)">−</button><button onclick="adjustValue('eyeY',5)">+</button></div></div>
-  <div class="ctrl-grp"><div class="lbl">Olho X</div><div class="val" id="eyeXValue">0</div><div class="stepper"><button onclick="adjustValue('eyeX',-5)">−</button><button onclick="adjustValue('eyeX',5)">+</button></div></div>
-  <div class="ctrl-grp"><div class="lbl">Boca Y</div><div class="val" id="mouthYValue">0</div><div class="stepper"><button onclick="adjustValue('mouthY',-5)">−</button><button onclick="adjustValue('mouthY',5)">+</button></div></div>
+  <div class="ctrl-grp"><div class="lbl">Escala</div><div class="val" id="scaleValue">1.00</div><div class="stepper"><button onclick="adjustValue('scale',-0.05)">➖</button><button onclick="adjustValue('scale',0.05)">➕</button></div></div>
+  <div class="ctrl-grp"><div class="lbl">Olho Y</div><div class="val" id="eyeYValue">0</div><div class="stepper"><button onclick="adjustValue('eyeY',-5)">➖</button><button onclick="adjustValue('eyeY',5)">➕</button></div></div>
+  <div class="ctrl-grp"><div class="lbl">Olho X</div><div class="val" id="eyeXValue">0</div><div class="stepper"><button onclick="adjustValue('eyeX',-5)">➖</button><button onclick="adjustValue('eyeX',5)">➕</button></div></div>
+  <div class="ctrl-grp"><div class="lbl">Boca Y</div><div class="val" id="mouthYValue">0</div><div class="stepper"><button onclick="adjustValue('mouthY',-5)">➖</button><button onclick="adjustValue('mouthY',5)">➕</button></div></div>
   <div class="chip" onclick="resetAll()"><i class="fas fa-rotate-left"></i> Reset</div>
 </div>
 
@@ -249,8 +249,8 @@
     <div class="lbl">Zoom</div>
     <div class="val" id="zoomValue">1.0x</div>
     <div class="stepper">
-      <button onclick="changeZoom(-0.1)">−</button>
-      <button onclick="changeZoom(0.1)">+</button>
+      <button onclick="changeZoom(-0.1)">➖</button>
+      <button onclick="changeZoom(0.1)">➕</button>
     </div>
   </div>
 </div>
