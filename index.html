@@ -93,6 +93,17 @@
     .s-txt { font-size:11px; color:var(--muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     #snackbar { position:fixed; bottom:88px; left:50%; transform:translateX(-50%) translateY(16px); background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:9px 18px; border-radius:18px; font-size:13px; z-index:9998; opacity:0; transition:all 0.28s; pointer-events:none; white-space:nowrap; box-shadow:0 8px 24px rgba(0,0,0,0.5); }
     #snackbar.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+    /* Modal de download para WebView */
+    #dlModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:99999; align-items:flex-end; justify-content:center; padding:20px; }
+    #dlModal.show { display:flex; }
+    #dlModal .dlBox { background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:22px; width:100%; max-width:400px; display:flex; flex-direction:column; gap:14px; }
+    #dlModal h3 { font-size:15px; font-weight:700; color:var(--gold); text-align:center; }
+    #dlModal p { font-size:12px; color:var(--muted); text-align:center; line-height:1.5; }
+    #dlModal .dlBtns { display:flex; flex-direction:column; gap:8px; }
+    #dlModal .dlBtn { background:linear-gradient(135deg,var(--gold),var(--gold2)); color:#000; border:none; border-radius:12px; padding:13px; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; }
+    #dlModal .dlBtn.sec { background:var(--surface); border:1px solid var(--border); color:var(--text); }
+    #dlModal .dlBtn:active { opacity:0.8; transform:scale(0.98); }
     #audioFile, #customBgInput, #videoBgInput { display:none; }
   </style>
 </head>
@@ -264,15 +275,177 @@
 
 <div class="status-bar">
   <div class="s-dot" id="sDot"></div>
-  <div class="s-txt" id="statusMsg">✨ Avatar Editor – Compartilhar para salvar</div>
+  <div class="s-txt" id="statusMsg">✨ Avatar Editor – Pronto</div>
 </div>
 
 <input type="file" id="audioFile" accept="audio/*">
 <div id="snackbar"></div>
 
+<!-- ★ MODAL DE DOWNLOAD PARA WEBVIEW ANDROID -->
+<div id="dlModal">
+  <div class="dlBox">
+    <h3 id="dlModalTitle">📥 Salvar Arquivo</h3>
+    <p id="dlModalMsg">Escolha como salvar seu arquivo:</p>
+    <div class="dlBtns">
+      <button class="dlBtn" id="dlBtnShare"><i class="fas fa-share-nodes"></i> Compartilhar / Salvar</button>
+      <button class="dlBtn" id="dlBtnOpen"><i class="fas fa-external-link-alt"></i> Abrir no navegador</button>
+      <button class="dlBtn sec" id="dlBtnClose">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
 "use strict";
+
+// ═══════════════════════════════════════════════════════
+// ★ SISTEMA DE DOWNLOAD ROBUSTO PARA WEBVIEW ANDROID ★
+// ═══════════════════════════════════════════════════════
+// Estratégia em camadas para garantir que o arquivo seja salvo
+// independente de como o WebView está configurado.
+
+let _dlBlob = null;
+let _dlFilename = null;
+let _dlDataURL = null;
+
+// Detecta se está rodando dentro de WebView Android
+const isAndroidWebView = /Android/.test(navigator.userAgent) &&
+  (/wv/.test(navigator.userAgent) || /Version\/\d/.test(navigator.userAgent) ||
+   !navigator.userAgent.includes('Chrome') ||
+   (window.Android !== undefined));
+
+// Converte Blob para base64 data URL
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// ★ FUNÇÃO PRINCIPAL — substitui a antiga triggerDownloadOrShare
+async function triggerDownloadOrShare(blob, filename) {
+  _dlBlob = blob;
+  _dlFilename = filename;
+
+  // Pré-converte para data URL (funciona em qualquer WebView)
+  try {
+    _dlDataURL = await blobToDataURL(blob);
+  } catch(e) {
+    _dlDataURL = null;
+  }
+
+  // === CAMADA 1: Interface Android nativa (se o APK expõe bridge JS) ===
+  if (window.Android && typeof window.Android.saveFile === 'function') {
+    try {
+      if (_dlDataURL) {
+        window.Android.saveFile(_dlDataURL, filename);
+        showSnack('✅ Arquivo salvo!');
+        return;
+      }
+    } catch(e) {}
+  }
+
+  // === CAMADA 2: Web Share API com arquivo ===
+  if (navigator.share && navigator.canShare) {
+    const file = new File([blob], filename, { type: blob.type });
+    if (navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'Avatar Editor' });
+        showSnack('✅ Compartilhado!');
+        return;
+      } catch(e) {
+        if (e.name === 'AbortError') {
+          // Usuário cancelou — não faz fallback automático
+          return;
+        }
+      }
+    }
+  }
+
+  // === CAMADA 3: Download direto via data URL (mais confiável em WebView) ===
+  if (_dlDataURL) {
+    try {
+      const a = document.createElement('a');
+      a.href = _dlDataURL;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showSnack('⬇️ Baixando...', null);
+      // Verifica se o download funcionou (em WebView geralmente não funciona,
+      // então abre o modal após 1s se o app ainda está em foco)
+      setTimeout(() => {
+        if (document.visibilityState !== 'hidden') {
+          showDownloadModal();
+        }
+      }, 1200);
+      return;
+    } catch(e) {}
+  }
+
+  // === CAMADA 4: Modal com instruções + botões de ação ===
+  showDownloadModal();
+}
+
+function showDownloadModal() {
+  const modal = document.getElementById('dlModal');
+  modal.classList.add('show');
+}
+
+// Configura botões do modal
+document.getElementById('dlBtnShare').addEventListener('click', async () => {
+  document.getElementById('dlModal').classList.remove('show');
+  if (_dlBlob) {
+    // Tenta Share API com arquivo
+    if (navigator.share) {
+      try {
+        const file = new File([_dlBlob], _dlFilename, { type: _dlBlob.type });
+        await navigator.share({ files: [file], title: 'Avatar Editor', text: 'Salve seu avatar!' });
+        showSnack('✅ Compartilhado!');
+        return;
+      } catch(e) {}
+    }
+    // Fallback: abre data URL para o usuário salvar manualmente
+    if (_dlDataURL) {
+      const w = window.open('', '_blank');
+      if (w) {
+        w.document.write(`
+          <html><body style="margin:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:16px">
+          <p style="color:#fff;font-family:sans-serif;font-size:14px;text-align:center;padding:0 20px">
+            Pressione e segure a imagem/vídeo abaixo e escolha <b>"Salvar"</b>
+          </p>
+          ${_dlBlob.type.startsWith('image/') ?
+            `<img src="${_dlDataURL}" style="max-width:100%;max-height:80vh">` :
+            `<video src="${_dlDataURL}" controls style="max-width:100%;max-height:80vh"></video>`
+          }
+          </body></html>
+        `);
+      } else {
+        // popup bloqueado — abre na mesma aba
+        window.location.href = _dlDataURL;
+      }
+    }
+  }
+});
+
+document.getElementById('dlBtnOpen').addEventListener('click', () => {
+  document.getElementById('dlModal').classList.remove('show');
+  if (_dlDataURL) {
+    // Abre data URL em nova aba — usuário pode salvar pressionando e segurando
+    const w = window.open(_dlDataURL, '_blank');
+    if (!w) window.location.href = _dlDataURL;
+  }
+  showSnack('💾 Pressione e segure para salvar');
+});
+
+document.getElementById('dlBtnClose').addEventListener('click', () => {
+  document.getElementById('dlModal').classList.remove('show');
+});
+// ═══════════════════════════════════════════════════════
+
 const canvas = document.getElementById('editorCanvas');
 const ctx = canvas.getContext('2d');
 const statusDiv = document.getElementById('statusMsg');
@@ -336,47 +509,12 @@ function showSnack(msg, retryFn) {
   const sb = document.getElementById('snackbar');
   sb.innerHTML = msg;
   if (retryFn) {
-    sb.innerHTML += ' <button style="background:var(--gold);color:#000;border:none;border-radius:10px;padding:2px 8px;margin-left:8px;cursor:pointer;">Baixar</button>';
-    sb.querySelector('button').onclick = retryFn;
+    sb.innerHTML += ' <button style="background:var(--gold);color:#000;border:none;border-radius:10px;padding:2px 8px;margin-left:8px;cursor:pointer;" onclick="this.parentNode._retry&&this.parentNode._retry()">Baixar</button>';
+    sb._retry = retryFn;
   }
   sb.classList.add('show');
   clearTimeout(sb._t);
   sb._t = setTimeout(() => sb.classList.remove('show'), 5000);
-}
-
-// ★ NOVA FUNÇÃO: Compartilhar primeiro, depois download fallback
-async function triggerDownloadOrShare(blob, filename) {
-  // Tenta compartilhar via Web Share API (funciona bem em Android moderno)
-  if (navigator.share && navigator.canShare) {
-    const file = new File([blob], filename, { type: blob.type });
-    if (navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: 'Avatar Editor',
-          text: 'Salve seu avatar!'
-        });
-        showSnack('✅ Compartilhado! Escolha onde salvar.');
-        return; // sucesso, não precisa fazer mais nada
-      } catch (err) {
-        // usuário cancelou ou erro, cai para o fallback
-        console.log('Share cancelado/erro:', err);
-      }
-    }
-  }
-  // Fallback: download tradicional com link e nova janela
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  const newWindow = window.open(url, '_blank');
-  if (newWindow) newWindow.focus();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-  showSnack('⬇️ Download iniciado. Se falhar, clique:', () => { window.open(url, '_blank'); });
 }
 
 window.changeZoom = function(delta) {
@@ -442,9 +580,32 @@ window.adjustValue = function(prop, delta) {
   else if (prop==='mouthY') { manualMouthOffsetY = Math.min(100,Math.max(-100,manualMouthOffsetY+delta)); document.getElementById('mouthYValue').textContent=manualMouthOffsetY; }
   drawCharacter(mouthLevel);
 };
+
+// ★ Foto: usa canvas.toDataURL diretamente (mais confiável em WebView)
 window.takeSnapshot = function() {
-  canvas.toBlob(blob => triggerDownloadOrShare(blob, 'avatar_'+Date.now()+'.png'), 'image/png');
+  try {
+    // Tenta via toBlob primeiro
+    canvas.toBlob(blob => {
+      if (blob) {
+        triggerDownloadOrShare(blob, 'avatar_' + Date.now() + '.png');
+      } else {
+        // Fallback direto: abre data URL
+        const dataURL = canvas.toDataURL('image/png');
+        const w = window.open('', '_blank');
+        if (w) {
+          w.document.write(`<html><body style="margin:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:16px"><p style="color:#fff;font-family:sans-serif;font-size:14px;text-align:center;padding:0 20px">Pressione e segure a imagem e escolha <b>"Salvar"</b></p><img src="${dataURL}" style="max-width:100%;max-height:85vh"></body></html>`);
+        } else {
+          window.location.href = dataURL;
+        }
+      }
+    }, 'image/png');
+  } catch(e) {
+    // Último recurso
+    const dataURL = canvas.toDataURL('image/png');
+    window.open(dataURL, '_blank');
+  }
 };
+
 window.shareApp = async function() {
   if (navigator.share) { try { await navigator.share({title:'Avatar Editor',text:'Editor de avatar animado! ✨',url:window.location.href}); } catch(e){} }
   else { await navigator.clipboard.writeText(window.location.href).catch(()=>{}); showSnack('📋 Link copiado!'); }
@@ -488,7 +649,6 @@ function buildAvatarList() {
   });
 }
 
-// -- áudio etc mantidos iguais --
 audioFileInput.addEventListener('change', e => {
   const file=e.target.files[0];
   if(file){ document.getElementById('audioFileName').textContent=file.name; audioBuffer=null; }
@@ -586,11 +746,25 @@ window.startRecording = async function() {
   connectVoiceNodes(rs,dest,rn); rs.connect(analyser);
   const combined=new MediaStream([...canvasStream.getVideoTracks(),...dest.stream.getAudioTracks()]);
   recordedChunks=[];
-  mediaRecorder=new MediaRecorder(combined,{mimeType:'video/webm'});
+
+  // ★ Detecta o melhor formato de vídeo suportado pelo dispositivo
+  const mimeTypes = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+    'video/mp4',
+    ''
+  ];
+  const mimeType = mimeTypes.find(m => !m || MediaRecorder.isTypeSupported(m)) || '';
+  const recOptions = mimeType ? { mimeType } : {};
+
+  mediaRecorder=new MediaRecorder(combined, recOptions);
   mediaRecorder.ondataavailable=e=>{if(e.data.size)recordedChunks.push(e.data);};
   mediaRecorder.onstop=()=>{
-    const blob=new Blob(recordedChunks,{type:'video/webm'});
-    triggerDownloadOrShare(blob, 'avatar_'+Date.now()+'.webm');
+    const finalMime = mediaRecorder.mimeType || 'video/webm';
+    const ext = finalMime.includes('mp4') ? 'mp4' : 'webm';
+    const blob=new Blob(recordedChunks,{type:finalMime});
+    triggerDownloadOrShare(blob, 'avatar_'+Date.now()+'.'+ext);
     stopPlayback();
   };
   mediaRecorder.start(); isRecording=true;
